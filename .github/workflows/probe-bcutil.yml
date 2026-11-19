@@ -1,0 +1,47 @@
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 Objectionary.com
+# SPDX-License-Identifier: MIT
+---
+# yamllint disable rule:line-length
+name: probe-bcutil
+'on':
+  workflow_dispatch: null
+  push:
+    branches:
+      - probe-bcutil
+concurrency:
+  group: probe-bcutil-${{ github.ref }}
+  cancel-in-progress: true
+permissions: read-all
+jobs:
+  probe:
+    permissions: write-all
+    timeout-minutes: 30
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: 'zulu'
+          java-version: 23
+      - name: 'Clean local Maven repo (no cache restore)'
+        run: rm -rf ~/.m2/repository
+      - name: 'Checkout mybatis-3 at the pinned coverage sha'
+        run: |
+          mkdir -p /tmp/mb && cd /tmp/mb
+          git init -q mb3
+          cd mb3
+          git remote add origin https://github.com/mybatis/mybatis-3.git
+          git fetch --depth 1 -q origin d3802feff2bef6122bd65c07782b00e4ceb6c99b
+          git checkout -q FETCH_HEAD
+      - name: 'Run the warmup command of hone-it.sh'
+        run: |
+          cd /tmp/mb/mb3
+          mvn -ntp -B --batch-mode -Dlicense.skip -Drat.skip -Dspotbugs.skip -Dcheckstyle.skip -Dpmd.skip -Denforcer.skip validate 2>&1 | tee /tmp/warmup.log
+          echo "EXIT=${PIPESTATUS[0]}"
+      - name: 'Report'
+        if: always()
+        run: |
+          echo "== result:"
+          grep -E "VersionRangeResolution|BUILD SUCCESS|BUILD FAILURE" /tmp/warmup.log | head -5 || true
+          echo "== maven version:"
+          mvn --version | head -1
